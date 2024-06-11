@@ -1,48 +1,35 @@
 const express = require('express');
-const crypto = require('crypto');
 const bodyParser = require('body-parser');
-const cors = require('cors');
+const axios = require('axios');
+const admin = require('./firebaseAdmin');
 
 const app = express();
 app.use(bodyParser.json());
-app.use(cors());
 
-const TELEGRAM_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN';
-const SECRET_KEY = crypto.createHash('sha256').update(TELEGRAM_TOKEN).digest();
+const BOT_TOKEN = '7499886297:AAHUe6sSTsLxxL2I_5oPnX8vd_dDXPv2ZYE';
+const FIREBASE_WEB_API_KEY = 'AIzaSyCqDERteL9-wqPnIY5XdBxvhgBvnoLx-5o';
 
-const validateTelegramData = (data) => {
-  const { hash, ...rest } = data;
-  const checkString = Object.keys(rest)
-    .sort()
-    .map(key => `${key}=${rest[key]}`)
-    .join('\n');
-  const hmac = crypto.createHmac('sha256', SECRET_KEY).update(checkString).digest('hex');
-  return hmac === hash;
-};
+app.post('/auth', async (req, res) => {
+  const { hash, id, first_name, last_name, username, auth_date } = req.body;
 
-app.post('/auth/telegram', (req, res) => {
-  const data = req.body;
-  if (validateTelegramData(data)) {
-    // Save user data to database
-    const user = {
-      id: data.id,
-      username: data.username,
-      first_name: data.first_name,
-      last_name: data.last_name,
-      photo_url: data.photo_url,
-      auth_date: data.auth_date
-    };
-    // Save or update user in your database
-    // For example, using Firebase:
-    // const userRef = firestore.collection('users').doc(data.id);
-    // userRef.set(user, { merge: true });
+  // Проверка подлинности данных пользователя (упрощенная версия, в реальном приложении рекомендуется усиленная проверка)
+  const data = `auth_date=${auth_date}\nfirst_name=${first_name}\nid=${id}\nusername=${username}`;
+  const secretKey = require('crypto').createHash('sha256').update(BOT_TOKEN).digest();
+  const checkString = require('crypto').createHmac('sha256', secretKey).update(data).digest('hex');
 
-    res.status(200).send(user);
-  } else {
-    res.status(403).send('Forbidden');
+  if (checkString !== hash) {
+    return res.status(401).send('Unauthorized');
+  }
+
+  try {
+    const customToken = await admin.auth().createCustomToken(id);
+    res.json({ token: customToken });
+  } catch (error) {
+    res.status(500).send(error.message);
   }
 });
 
-app.listen(5000, () => {
-  console.log('Server is running on port 5000');
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
