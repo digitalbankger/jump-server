@@ -1,35 +1,43 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const axios = require('axios');
-const admin = require('./firebaseAdmin');
+const mysql = require('./mysqlConfig');
+const cors = require('cors');
 
 const app = express();
+const port = 3000;
+
 app.use(bodyParser.json());
+app.use(cors());
 
-const BOT_TOKEN = '7499886297:AAHUe6sSTsLxxL2I_5oPnX8vd_dDXPv2ZYE';
-const FIREBASE_WEB_API_KEY = 'AIzaSyCqDERteL9-wqPnIY5XdBxvhgBvnoLx-5o';
+app.post('/register', (req, res) => {
+  const { telegram_id, username, character } = req.body;
 
-app.post('/auth', async (req, res) => {
-  const { hash, id, first_name, last_name, username, auth_date } = req.body;
+  const query = 'SELECT * FROM users WHERE telegram_id = ?';
+  mysql.query(query, [telegram_id], (err, results) => {
+    if (err) {
+      console.error('Database query error:', err);
+      return res.status(500).send('Произошла ошибка при проверке пользователя.');
+    }
 
-  // Проверка подлинности данных пользователя (упрощенная версия, в реальном приложении рекомендуется усиленная проверка)
-  const data = `auth_date=${auth_date}\nfirst_name=${first_name}\nid=${id}\nusername=${username}`;
-  const secretKey = require('crypto').createHash('sha256').update(BOT_TOKEN).digest();
-  const checkString = require('crypto').createHmac('sha256', secretKey).update(data).digest('hex');
-
-  if (checkString !== hash) {
-    return res.status(401).send('Unauthorized');
-  }
-
-  try {
-    const customToken = await admin.auth().createCustomToken(id);
-    res.json({ token: customToken });
-  } catch (error) {
-    res.status(500).send(error.message);
-  }
+    if (results.length === 0) {
+      const insertQuery = 'INSERT INTO users (telegram_id, username, character, level, points) VALUES (?, ?, ?, 1, 1000)';
+      mysql.query(insertQuery, [telegram_id, username, character], (err) => {
+        if (err) {
+          console.error('Database insert error:', err);
+          return res.status(500).send('Произошла ошибка при регистрации пользователя.');
+        }
+        res.send({ message: 'User registered successfully', character });
+      });
+    } else {
+      res.send({ message: 'User already exists', character: results[0].character });
+    }
+  });
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+app.get('/question', (req, res) => {
+  res.send({ question: 'Do you prefer bulls or bears?', options: ['bull', 'bear'] });
+});
+
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}/`);
 });
